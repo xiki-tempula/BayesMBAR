@@ -301,6 +301,7 @@ document.write(`
 <span class="kn">from</span><span class="w"> </span><span class="nn">optax</span><span class="w"> </span><span class="kn">import</span> <span class="n">sgd</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">optax</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.utils</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">JAXClearCaches</span><span class="p">,</span>
     <span class="n">_solve_mbar</span><span class="p">,</span>
     <span class="n">fmin_newton</span><span class="p">,</span>
     <span class="n">_compute_log_likelihood_of_dF</span><span class="p">,</span>
@@ -313,7 +314,7 @@ document.write(`
 
 <div class="viewcode-block" id="BayesMBAR">
 <a class="viewcode-back" href="../../API.html#bayesmbar.BayesMBAR">[docs]</a>
-<span class="k">class</span><span class="w"> </span><span class="nc">BayesMBAR</span><span class="p">:</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">BayesMBAR</span><span class="p">(</span><span class="n">JAXClearCaches</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Bayesian Multistate Bennett Acceptance Ratio (BayesMBAR) method&quot;&quot;&quot;</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>

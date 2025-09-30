@@ -612,7 +612,11 @@ document.write(`
         <span class="n">DeltaF_cov</span> <span class="o">=</span> <span class="p">(</span>
             <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">F_cov</span><span class="p">)[:,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">F_cov</span><span class="p">)[</span><span class="kc">None</span><span class="p">,</span> <span class="p">:]</span> <span class="o">-</span> <span class="mi">2</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">F_cov</span>
         <span class="p">)</span>
-        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">DeltaF_cov</span><span class="p">)</span></div>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">DeltaF_cov</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__del__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Clear JAX caches when the object is deleted.&quot;&quot;&quot;</span>
+        <span class="n">jax</span><span class="o">.</span><span class="n">clear_caches</span><span class="p">()</span></div>
 
 
 

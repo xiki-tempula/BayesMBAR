@@ -295,7 +295,7 @@ document.write(`
 <span class="kn">import</span><span class="w"> </span><span class="nn">jax.random</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jr</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">jax.scipy.special</span><span class="w"> </span><span class="kn">import</span> <span class="n">logsumexp</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy.typing</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">npt</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">JAXClearCaches</span><span class="p">,</span> <span class="n">_solve_mbar</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">_solve_mbar</span>
 
 <span class="n">jax</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="s2">&quot;jax_enable_x64&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
 
@@ -309,7 +309,7 @@ document.write(`
 
 <div class="viewcode-block" id="FastMBAR">
 <a class="viewcode-back" href="../../API.html#bayesmbar.FastMBAR">[docs]</a>
-<span class="k">class</span><span class="w"> </span><span class="nc">FastMBAR</span><span class="p">(</span><span class="n">JAXClearCaches</span><span class="p">):</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">FastMBAR</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    The FastMBAR class is initialized with an energy matrix and an array</span>
 <span class="sd">    of num of conformations. The corresponding MBAR equation is solved</span>

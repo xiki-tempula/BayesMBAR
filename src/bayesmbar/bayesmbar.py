@@ -192,8 +192,8 @@ class BayesMBAR:
                 )
                 print(loss)
                 self._rng_key, subkey = random.split(self._rng_key)
-                if i % 100 == 0:
-                    params = _params_from_raw(raw_params)
+                # if i % 100 == 0:
+                #     params = _params_from_raw(raw_params)
                     # print(f"step: {i:>10d}, loss: {loss:10.4f}", _print_params(params))
 
             self._params = _params_from_raw(raw_params)

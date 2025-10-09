@@ -190,10 +190,11 @@ class BayesMBAR:
                 loss, raw_params, opt_state = step(
                     subkey, raw_params, opt_state, self.mean, self.kernel, _data
                 )
+                print(loss)
                 self._rng_key, subkey = random.split(self._rng_key)
                 if i % 100 == 0:
                     params = _params_from_raw(raw_params)
-                    print(f"step: {i:>10d}, loss: {loss:10.4f}", _print_params(params))
+                    # print(f"step: {i:>10d}, loss: {loss:10.4f}", _print_params(params))
 
             self._params = _params_from_raw(raw_params)
             self._dF_mean_prior = self.mean(self._params["mean"], self._state_cv)

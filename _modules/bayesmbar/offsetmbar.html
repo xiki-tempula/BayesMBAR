@@ -291,76 +291,107 @@ document.write(`
 <span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">bayesmbar</span><span class="w"> </span><span class="kn">import</span> <span class="n">CBayesMBAR</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="kn">import</span> <span class="n">ndarray</span>
 
 
 <div class="viewcode-block" id="OffsetMBAR">
 <a class="viewcode-back" href="../../API.html#bayesmbar.OffsetMBAR">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">OffsetMBAR</span><span class="p">(</span>
-    <span class="n">energies</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
-    <span class="n">nums_conf</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
-    <span class="n">offsets</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
-    <span class="n">sample_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1000</span><span class="p">,</span>
-    <span class="n">warmup_steps</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">500</span><span class="p">,</span>
-    <span class="n">method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;Newton&quot;</span><span class="p">,</span>
-    <span class="n">random_seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-    <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Offset-constrained Coupled BayesMBAR.</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">OffsetMBAR</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">energies</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
+        <span class="n">nums_conf</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
+        <span class="n">offsets</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
+        <span class="n">sample_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1000</span><span class="p">,</span>
+        <span class="n">warmup_steps</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">500</span><span class="p">,</span>
+        <span class="n">method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;Newton&quot;</span><span class="p">,</span>
+        <span class="n">random_seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Offset-constrained Coupled BayesMBAR.</span>
 
-<span class="sd">    This variant of Coupled BayesMBAR enforces a simple constraint: for each</span>
-<span class="sd">    coupled system i, the free-energy difference computed from its energies</span>
-<span class="sd">    plus a provided scalar offset must be identical across all systems. In</span>
-<span class="sd">    other words, the solution to the MBAR equation satisfies</span>
-<span class="sd">    mbar(energies[i]) + offsets[i] = constant for every system i.</span>
+<span class="sd">        This variant of Coupled BayesMBAR enforces a simple constraint: for each</span>
+<span class="sd">        coupled system i, the free-energy difference computed from its energies</span>
+<span class="sd">        plus a provided scalar offset must be identical across all systems. In</span>
+<span class="sd">        other words, the solution to the MBAR equation satisfies</span>
+<span class="sd">        mbar(energies[i]) + offsets[i] = constant for every system i.</span>
 
-<span class="sd">    Parameters</span>
-<span class="sd">    ----------</span>
-<span class="sd">    energies : List[numpy.ndarray]</span>
-<span class="sd">        Per-system arrays of reduced potentials (in units of kT) used by</span>
-<span class="sd">        MBAR. One array per coupled system.</span>
-<span class="sd">    nums_conf : List[numpy.ndarray]</span>
-<span class="sd">        Per-system arrays of counts (number of configurations) corresponding</span>
-<span class="sd">        to the provided energies.</span>
-<span class="sd">    offsets : List[float]</span>
-<span class="sd">        One scalar offset per system. The constraint is that</span>
-<span class="sd">        mbar(energies[i]) + offsets[i] is the same across all systems.</span>
-<span class="sd">    sample_size : int, optional</span>
-<span class="sd">        Number of samples to draw from the likelihood. Default: 1000.</span>
-<span class="sd">    warmup_steps : int, optional</span>
-<span class="sd">        Number of warmup steps for the HMC sampler. Default: 500.</span>
-<span class="sd">    method : str, optional</span>
-<span class="sd">        Optimization method to find the likelihood mode. Either &quot;Newton&quot; or</span>
-<span class="sd">        &quot;L-BFGS-B&quot;. Default: &quot;Newton&quot;.</span>
-<span class="sd">    random_seed : int, optional</span>
-<span class="sd">        Random seed. If None, a seed is generated from the current time.</span>
-<span class="sd">        Default: None.</span>
-<span class="sd">    verbose : bool, optional</span>
-<span class="sd">        If True, print sampling progress. Default: True.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">new_energies</span> <span class="o">=</span> <span class="p">[]</span>
-    <span class="n">new_nums_conf</span> <span class="o">=</span> <span class="p">[]</span>
-    <span class="n">num_states</span> <span class="o">=</span> <span class="p">[]</span>
-    <span class="k">for</span> <span class="n">energy</span><span class="p">,</span> <span class="n">n_conf</span><span class="p">,</span> <span class="n">offset</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">energies</span><span class="p">,</span> <span class="n">nums_conf</span><span class="p">,</span> <span class="n">offsets</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
-        <span class="n">last_col</span> <span class="o">=</span> <span class="n">energy</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="p">:]</span> <span class="o">+</span> <span class="n">offset</span>
-        <span class="n">new_energy</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">energy</span><span class="p">,</span> <span class="n">last_col</span><span class="p">])</span>
-        <span class="n">new_energies</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">new_energy</span><span class="p">)</span>
-        <span class="n">new_nums_conf</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">n_conf</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
-        <span class="n">num_states</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">n_conf</span><span class="p">))</span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        energies : List[numpy.ndarray]</span>
+<span class="sd">            Per-system arrays of reduced potentials (in units of kT) used by</span>
+<span class="sd">            MBAR. One array per coupled system.</span>
+<span class="sd">        nums_conf : List[numpy.ndarray]</span>
+<span class="sd">            Per-system arrays of counts (number of configurations) corresponding</span>
+<span class="sd">            to the provided energies.</span>
+<span class="sd">        offsets : List[float]</span>
+<span class="sd">            One scalar offset per system. The constraint is that</span>
+<span class="sd">            mbar(energies[i]) + offsets[i] is the same across all systems.</span>
+<span class="sd">        sample_size : int, optional</span>
+<span class="sd">            Number of samples to draw from the likelihood. Default: 1000.</span>
+<span class="sd">        warmup_steps : int, optional</span>
+<span class="sd">            Number of warmup steps for the HMC sampler. Default: 500.</span>
+<span class="sd">        method : str, optional</span>
+<span class="sd">            Optimization method to find the likelihood mode. Either &quot;Newton&quot; or</span>
+<span class="sd">            &quot;L-BFGS-B&quot;. Default: &quot;Newton&quot;.</span>
+<span class="sd">        random_seed : int, optional</span>
+<span class="sd">            Random seed. If None, a seed is generated from the current time.</span>
+<span class="sd">            Default: None.</span>
+<span class="sd">        verbose : bool, optional</span>
+<span class="sd">            If True, print sampling progress. Default: True.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">new_energies</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">new_nums_conf</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">first_state</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">last_state</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">connecting_states</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">energy</span><span class="p">,</span> <span class="n">n_conf</span><span class="p">,</span> <span class="n">offset</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">energies</span><span class="p">,</span> <span class="n">nums_conf</span><span class="p">,</span> <span class="n">offsets</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+            <span class="c1"># Add the original reduced potential</span>
+            <span class="n">states</span><span class="p">,</span> <span class="n">n_samples</span> <span class="o">=</span> <span class="n">energy</span><span class="o">.</span><span class="n">shape</span>
+            <span class="n">new_energies</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">energy</span><span class="p">)</span>
+            <span class="n">new_nums_conf</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">n_conf</span><span class="p">)</span>
+            <span class="n">first_state</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">index</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+            <span class="c1"># Generate the reduced potential for offset</span>
+            <span class="n">index</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="c1"># Make it divisible</span>
+            <span class="nb">slice</span> <span class="o">=</span> <span class="n">energy</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="p">:</span><span class="n">n_samples</span><span class="p">]</span>
+            <span class="n">new_energy</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">offset</span><span class="p">,</span> <span class="n">states</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span>
+                <span class="p">(</span><span class="n">states</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="p">)</span> <span class="o">+</span> <span class="nb">slice</span><span class="o">.</span><span class="n">reshape</span><span class="p">((</span><span class="mi">1</span><span class="p">,</span> <span class="n">n_samples</span><span class="p">))</span>
+            <span class="n">new_energies</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">new_energy</span><span class="p">)</span>
+            <span class="n">new_nums_conf</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">n_conf</span><span class="p">)</span>
+            <span class="n">last_state</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">index</span><span class="p">,</span> <span class="n">states</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span>
+            <span class="n">connecting_states</span><span class="o">.</span><span class="n">append</span><span class="p">([(</span><span class="n">index</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">states</span> <span class="o">-</span> <span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="mi">0</span><span class="p">)])</span>
+            <span class="n">index</span> <span class="o">+=</span> <span class="mi">1</span>
 
-    <span class="k">return</span> <span class="n">CBayesMBAR</span><span class="p">(</span>
-        <span class="n">new_energies</span><span class="p">,</span>
-        <span class="n">new_nums_conf</span><span class="p">,</span>
-        <span class="n">identical_states</span><span class="o">=</span><span class="p">[</span>
-            <span class="p">[(</span><span class="n">i</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">num_states</span><span class="p">))],</span>
-            <span class="p">[(</span><span class="n">i</span><span class="p">,</span> <span class="n">num_states</span><span class="p">[</span><span class="n">i</span><span class="p">])</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">num_states</span><span class="p">))],</span>
-        <span class="p">],</span>
-        <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">,</span>
-        <span class="n">sample_size</span><span class="o">=</span><span class="n">sample_size</span><span class="p">,</span>
-        <span class="n">warmup_steps</span><span class="o">=</span><span class="n">warmup_steps</span><span class="p">,</span>
-        <span class="n">random_seed</span><span class="o">=</span><span class="n">random_seed</span><span class="p">,</span>
-        <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">,</span>
-    <span class="p">)</span></div>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cbmbar</span> <span class="o">=</span> <span class="n">CBayesMBAR</span><span class="p">(</span>
+            <span class="n">new_energies</span><span class="p">,</span>
+            <span class="n">new_nums_conf</span><span class="p">,</span>
+            <span class="n">identical_states</span><span class="o">=</span><span class="p">[</span><span class="n">first_state</span><span class="p">,</span> <span class="n">last_state</span><span class="p">,</span> <span class="o">*</span><span class="n">connecting_states</span><span class="p">],</span>
+            <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">,</span>
+            <span class="n">sample_size</span><span class="o">=</span><span class="n">sample_size</span><span class="p">,</span>
+            <span class="n">warmup_steps</span><span class="o">=</span><span class="n">warmup_steps</span><span class="p">,</span>
+            <span class="n">random_seed</span><span class="o">=</span><span class="n">random_seed</span><span class="p">,</span>
+            <span class="n">verbose</span><span class="o">=</span><span class="n">verbose</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">F_mode</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">ndarray</span><span class="p">]:</span>
+        <span class="n">F_mode_list</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">real_f</span><span class="p">,</span> <span class="n">offset_f</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cbmbar</span><span class="o">.</span><span class="n">F_mode</span><span class="p">[::</span><span class="mi">2</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">cbmbar</span><span class="o">.</span><span class="n">F_mode</span><span class="p">[</span><span class="mi">1</span><span class="p">::</span><span class="mi">2</span><span class="p">]):</span>
+            <span class="n">F_mode</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">real_f</span><span class="p">,</span> <span class="n">real_f</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">offset_f</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">offset_f</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="n">F_mode_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">F_mode</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">F_mode_list</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">F_mean</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">ndarray</span><span class="p">]:</span>
+        <span class="n">F_mean_list</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">real_f</span><span class="p">,</span> <span class="n">offset_f</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cbmbar</span><span class="o">.</span><span class="n">F_mean</span><span class="p">[::</span><span class="mi">2</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">cbmbar</span><span class="o">.</span><span class="n">F_mean</span><span class="p">[</span><span class="mi">1</span><span class="p">::</span><span class="mi">2</span><span class="p">]):</span>
+            <span class="n">F_mean</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">real_f</span><span class="p">,</span> <span class="n">real_f</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">offset_f</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">offset_f</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="n">F_mean_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">F_mean</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">F_mean_list</span></div>
 
 </pre></div>
 

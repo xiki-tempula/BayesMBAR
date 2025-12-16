@@ -314,6 +314,7 @@ document.write(`
         <span class="n">sample_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1000</span><span class="p">,</span>
         <span class="n">warmup_steps</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">500</span><span class="p">,</span>
         <span class="n">method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;Newton&quot;</span><span class="p">,</span>
+        <span class="n">max_iter</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">300</span><span class="p">,</span>
         <span class="n">random_seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
@@ -344,12 +345,20 @@ document.write(`
 <span class="sd">        method : str, optional</span>
 <span class="sd">            Optimization method to find the likelihood mode. Either &quot;Newton&quot; or</span>
 <span class="sd">            &quot;L-BFGS-B&quot;. Default: &quot;Newton&quot;.</span>
+<span class="sd">        max_iter : int, optional</span>
+<span class="sd">            Maximum number of iterations for the Newton optimizer. Default: 300.</span>
 <span class="sd">        random_seed : int, optional</span>
 <span class="sd">            Random seed. If None, a seed is generated from the current time.</span>
 <span class="sd">            Default: None.</span>
 <span class="sd">        verbose : bool, optional</span>
 <span class="sd">            If True, print sampling progress. Default: True.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">energy</span><span class="p">,</span> <span class="n">num_conf</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">energies</span><span class="p">,</span> <span class="n">nums_conf</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">)):</span>
+            <span class="n">n_lambda</span><span class="p">,</span> <span class="n">n_conf</span> <span class="o">=</span> <span class="n">energy</span><span class="o">.</span><span class="n">shape</span>
+            <span class="k">assert</span> <span class="n">n_lambda</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">num_conf</span><span class="p">),</span> <span class="sa">f</span><span class="s2">&quot;System </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">: energy has </span><span class="si">{</span><span class="n">n_lambda</span><span class="si">}</span><span class="s2"> lambda states, but num_conf has </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">num_conf</span><span class="p">)</span><span class="si">}</span><span class="s2">.&quot;</span>
+            <span class="k">assert</span> <span class="n">n_conf</span> <span class="o">==</span> <span class="nb">sum</span><span class="p">(</span><span class="n">num_conf</span><span class="p">),</span> <span class="sa">f</span><span class="s2">&quot;System </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">: energy has </span><span class="si">{</span><span class="n">n_conf</span><span class="si">}</span><span class="s2"> configurations, but num_conf sums to </span><span class="si">{</span><span class="nb">sum</span><span class="p">(</span><span class="n">num_conf</span><span class="p">)</span><span class="si">}</span><span class="s2">.&quot;</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">offsets</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">energies</span><span class="p">),</span> <span class="sa">f</span><span class="s2">&quot;offsets length (</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">offsets</span><span class="p">)</span><span class="si">}</span><span class="s2">) != energies length (</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">energies</span><span class="p">)</span><span class="si">}</span><span class="s2">).&quot;</span>
+
         <span class="bp">self</span><span class="o">.</span><span class="n">_energies</span> <span class="o">=</span> <span class="p">[</span><span class="n">jnp</span><span class="o">.</span><span class="n">float64</span><span class="p">(</span><span class="n">u</span><span class="p">)</span> <span class="k">for</span> <span class="n">u</span> <span class="ow">in</span> <span class="n">energies</span><span class="p">]</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_nums_conf</span> <span class="o">=</span> <span class="p">[</span><span class="n">jnp</span><span class="o">.</span><span class="n">int32</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">nums_conf</span><span class="p">]</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_offsets</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">offsets</span><span class="p">)</span>
@@ -390,9 +399,10 @@ document.write(`
                 <span class="n">x</span><span class="p">,</span>
                 <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_Q</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_b</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_energies</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nums_conf</span><span class="p">),</span>
                 <span class="n">verbose</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_verbose</span><span class="p">,</span>
+                <span class="n">max_iter</span><span class="o">=</span><span class="n">max_iter</span><span class="p">,</span>
             <span class="p">)</span>
         <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;L-BFGS-B&quot;</span><span class="p">:</span>
-            <span class="n">options</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;disp&quot;</span><span class="p">:</span> <span class="n">verbose</span><span class="p">,</span> <span class="s2">&quot;gtol&quot;</span><span class="p">:</span> <span class="mf">1e-8</span><span class="p">}</span>
+            <span class="n">options</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;disp&quot;</span><span class="p">:</span> <span class="n">verbose</span><span class="p">,</span> <span class="s2">&quot;gtol&quot;</span><span class="p">:</span> <span class="mf">1e-8</span><span class="p">,</span> <span class="s2">&quot;maxiter&quot;</span><span class="p">:</span> <span class="n">max_iter</span><span class="p">}</span>
             <span class="n">f</span> <span class="o">=</span> <span class="n">jit</span><span class="p">(</span><span class="n">value_and_grad</span><span class="p">(</span><span class="n">_compute_offset_loss_likelihood</span><span class="p">))</span>
             <span class="n">res</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">minimize</span><span class="p">(</span>
                 <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="p">[</span>
@@ -404,6 +414,11 @@ document.write(`
                 <span class="n">tol</span><span class="o">=</span><span class="mf">1e-12</span><span class="p">,</span>
                 <span class="n">options</span><span class="o">=</span><span class="n">options</span><span class="p">,</span>
             <span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">res</span><span class="o">.</span><span class="n">success</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;L-BFGS-B did not converge after </span><span class="si">{</span><span class="n">max_iter</span><span class="si">}</span><span class="s2"> iterations. &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;Message: </span><span class="si">{</span><span class="n">res</span><span class="o">.</span><span class="n">message</span><span class="si">}</span><span class="s2">. Consider increasing max_iter.&quot;</span>
+                <span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Invalid method&quot;</span><span class="p">)</span>
         

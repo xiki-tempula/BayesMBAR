@@ -289,16 +289,18 @@ document.write(`
                   
   <h1>Source code for bayesmbar.offsetmbar</h1><div class="highlight"><pre>
 <span></span><span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">partial</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">List</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="kn">import</span> <span class="n">ndarray</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">jax</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">jax</span><span class="w"> </span><span class="kn">import</span> <span class="n">random</span><span class="p">,</span> <span class="n">hessian</span><span class="p">,</span> <span class="n">jit</span><span class="p">,</span> <span class="n">value_and_grad</span><span class="p">,</span> <span class="n">vmap</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">jax.scipy.special</span><span class="w"> </span><span class="kn">import</span> <span class="n">logsumexp</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">scipy</span><span class="w"> </span><span class="kn">import</span> <span class="n">optimize</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">.bayesmbar</span><span class="w"> </span><span class="kn">import</span> <span class="n">_sample_from_logdensity</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">fmin_newton</span><span class="p">,</span> <span class="n">_compute_log_likelihood_of_dF</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">fmin_newton</span>
 
 <span class="n">jax</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="s2">&quot;jax_enable_x64&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
 
@@ -373,6 +375,12 @@ document.write(`
         
         <span class="c1"># Number of states in each MBAR system</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_nums_state</span> <span class="o">=</span> <span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nums_conf</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_num_systems</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_nums_state</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_M</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nums_state</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>  <span class="c1"># All systems have same number of states</span>
+        
+        <span class="c1"># Pre-compute padded arrays for vectorized computation</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_energies_padded</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nums_conf_padded</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_conf_masks</span> <span class="o">=</span> \
+            <span class="n">_prepare_padded_arrays</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_energies</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nums_conf</span><span class="p">)</span>
         
         <span class="c1"># Build the constraint matrix and offset vector</span>
         <span class="c1"># For each system, we have:</span>
@@ -390,24 +398,31 @@ document.write(`
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_verbose</span><span class="p">:</span>
             <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Solve for the mode of the likelihood&quot;</span><span class="p">)</span>
         
+        <span class="c1"># Create JIT-compiled functions with static arguments baked in</span>
+        <span class="nd">@partial</span><span class="p">(</span><span class="n">jit</span><span class="p">)</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">loss_fn</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">_compute_offset_loss_likelihood_vectorized</span><span class="p">(</span>
+                <span class="n">x</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_Q</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_b</span><span class="p">,</span> 
+                <span class="bp">self</span><span class="o">.</span><span class="n">_energies_padded</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nums_conf_padded</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_conf_masks</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_M</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_systems</span>
+            <span class="p">)</span>
+        
+        <span class="n">f</span> <span class="o">=</span> <span class="n">jit</span><span class="p">(</span><span class="n">value_and_grad</span><span class="p">(</span><span class="n">loss_fn</span><span class="p">))</span>
+        <span class="n">hess_fn</span> <span class="o">=</span> <span class="n">jit</span><span class="p">(</span><span class="n">hessian</span><span class="p">(</span><span class="n">loss_fn</span><span class="p">))</span>
+        
         <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;Newton&quot;</span><span class="p">:</span>
-            <span class="n">f</span> <span class="o">=</span> <span class="n">jit</span><span class="p">(</span><span class="n">value_and_grad</span><span class="p">(</span><span class="n">_compute_offset_loss_likelihood</span><span class="p">))</span>
-            <span class="n">hess</span> <span class="o">=</span> <span class="n">jit</span><span class="p">(</span><span class="n">hessian</span><span class="p">(</span><span class="n">_compute_offset_loss_likelihood</span><span class="p">))</span>
             <span class="n">res</span> <span class="o">=</span> <span class="n">fmin_newton</span><span class="p">(</span>
-                <span class="n">f</span><span class="p">,</span>
-                <span class="n">hess</span><span class="p">,</span>
+                <span class="k">lambda</span> <span class="n">x</span><span class="p">,</span> <span class="o">*</span><span class="n">_</span><span class="p">:</span> <span class="n">f</span><span class="p">(</span><span class="n">x</span><span class="p">),</span>  <span class="c1"># Wrapper to match expected signature</span>
+                <span class="k">lambda</span> <span class="n">x</span><span class="p">,</span> <span class="o">*</span><span class="n">_</span><span class="p">:</span> <span class="n">hess_fn</span><span class="p">(</span><span class="n">x</span><span class="p">),</span>
                 <span class="n">x</span><span class="p">,</span>
-                <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_Q</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_b</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_energies</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nums_conf</span><span class="p">),</span>
+                <span class="n">args</span><span class="o">=</span><span class="p">(),</span>
                 <span class="n">verbose</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_verbose</span><span class="p">,</span>
                 <span class="n">max_iter</span><span class="o">=</span><span class="n">max_iter</span><span class="p">,</span>
             <span class="p">)</span>
         <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;L-BFGS-B&quot;</span><span class="p">:</span>
             <span class="n">options</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;disp&quot;</span><span class="p">:</span> <span class="n">verbose</span><span class="p">,</span> <span class="s2">&quot;gtol&quot;</span><span class="p">:</span> <span class="mf">1e-8</span><span class="p">,</span> <span class="s2">&quot;maxiter&quot;</span><span class="p">:</span> <span class="n">max_iter</span><span class="p">}</span>
-            <span class="n">f</span> <span class="o">=</span> <span class="n">jit</span><span class="p">(</span><span class="n">value_and_grad</span><span class="p">(</span><span class="n">_compute_offset_loss_likelihood</span><span class="p">))</span>
             <span class="n">res</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">minimize</span><span class="p">(</span>
-                <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="p">[</span>
-                    <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">r</span><span class="p">)</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">f</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_Q</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_b</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_energies</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nums_conf</span><span class="p">)</span>
-                <span class="p">],</span>
+                <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">r</span><span class="p">)</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">f</span><span class="p">(</span><span class="n">x</span><span class="p">)],</span>
                 <span class="n">x</span><span class="p">,</span>
                 <span class="n">jac</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
                 <span class="n">method</span><span class="o">=</span><span class="s2">&quot;L-BFGS-B&quot;</span><span class="p">,</span>
@@ -435,9 +450,13 @@ document.write(`
             
             <span class="bp">self</span><span class="o">.</span><span class="n">_rng_key</span><span class="p">,</span> <span class="n">subkey</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rng_key</span><span class="p">)</span>
             
+            <span class="c1"># Use vectorized log density for sampling</span>
+            <span class="nd">@jit</span>
             <span class="k">def</span><span class="w"> </span><span class="nf">logdensity</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
-                <span class="k">return</span> <span class="n">_compute_offset_log_likelihood</span><span class="p">(</span>
-                    <span class="n">x</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_Q</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_b</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_energies</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nums_conf</span>
+                <span class="k">return</span> <span class="n">_compute_offset_log_likelihood_vectorized</span><span class="p">(</span>
+                    <span class="n">x</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_Q</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_b</span><span class="p">,</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_energies_padded</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nums_conf_padded</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_conf_masks</span><span class="p">,</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_M</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_systems</span>
                 <span class="p">)</span>
             
             <span class="bp">self</span><span class="o">.</span><span class="n">_x_samples_ll</span> <span class="o">=</span> <span class="n">_sample_from_logdensity</span><span class="p">(</span>
@@ -551,6 +570,53 @@ document.write(`
     <span class="k">return</span> <span class="n">state_F</span>
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">_compute_log_likelihood_of_dF_single</span><span class="p">(</span><span class="n">dF</span><span class="p">,</span> <span class="n">energy</span><span class="p">,</span> <span class="n">num_conf</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute log likelihood for a single MBAR system (inlined for performance).&quot;&quot;&quot;</span>
+    <span class="n">F</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">1</span><span class="p">,)),</span> <span class="n">dF</span><span class="p">])</span>
+    <span class="n">logn</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">num_conf</span><span class="p">)</span>
+    <span class="n">u</span> <span class="o">=</span> <span class="n">energy</span><span class="o">.</span><span class="n">T</span> <span class="o">-</span> <span class="n">F</span> <span class="o">-</span> <span class="n">logn</span>
+    <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">num_conf</span> <span class="o">*</span> <span class="n">F</span><span class="p">)</span> <span class="o">-</span> <span class="n">logsumexp</span><span class="p">(</span><span class="o">-</span><span class="n">u</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+
+
+<span class="nd">@partial</span><span class="p">(</span><span class="n">jit</span><span class="p">,</span> <span class="n">static_argnames</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;M&#39;</span><span class="p">,</span> <span class="s1">&#39;num_systems&#39;</span><span class="p">])</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_compute_offset_log_likelihood_vectorized</span><span class="p">(</span>
+    <span class="n">x</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">Q</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">b</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">energies_padded</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">nums_conf_padded</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">conf_masks</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">M</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">num_systems</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Vectorized log likelihood computation for offset-constrained MBAR.</span>
+<span class="sd">    </span>
+<span class="sd">    This version pads all systems to the same shape and uses vmap for parallelization.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">dF_full</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">Q</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span> <span class="o">+</span> <span class="n">b</span>
+    
+    <span class="c1"># Reshape to (num_systems, M) and extract MBAR dFs (first M-1 columns)</span>
+    <span class="n">dF_reshaped</span> <span class="o">=</span> <span class="n">dF_full</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">num_systems</span><span class="p">,</span> <span class="n">M</span><span class="p">)</span>
+    <span class="n">mbar_dFs</span> <span class="o">=</span> <span class="n">dF_reshaped</span><span class="p">[:,</span> <span class="p">:</span><span class="n">M</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>  <span class="c1"># Shape: (num_systems, M-1)</span>
+    
+    <span class="c1"># Build F matrices: prepend zeros -&gt; (num_systems, M)</span>
+    <span class="n">F_matrices</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">num_systems</span><span class="p">,</span> <span class="mi">1</span><span class="p">)),</span> <span class="n">mbar_dFs</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    
+    <span class="c1"># Compute log likelihoods in parallel using vmap</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">single_system_ll</span><span class="p">(</span><span class="n">F</span><span class="p">,</span> <span class="n">energy</span><span class="p">,</span> <span class="n">num_conf</span><span class="p">,</span> <span class="n">mask</span><span class="p">):</span>
+        <span class="n">logn</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">num_conf</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">,</span> <span class="n">num_conf</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">))</span>  <span class="c1"># Avoid log(0)</span>
+        <span class="n">u</span> <span class="o">=</span> <span class="n">energy</span><span class="o">.</span><span class="n">T</span> <span class="o">-</span> <span class="n">F</span> <span class="o">-</span> <span class="n">logn</span>  <span class="c1"># (n_conf, M)</span>
+        <span class="c1"># Mask out padded configurations</span>
+        <span class="n">log_sum_exp</span> <span class="o">=</span> <span class="n">logsumexp</span><span class="p">(</span><span class="o">-</span><span class="n">u</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>  <span class="c1"># (n_conf,)</span>
+        <span class="n">masked_lse</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">mask</span><span class="p">,</span> <span class="n">log_sum_exp</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">num_conf</span> <span class="o">*</span> <span class="n">F</span><span class="p">)</span> <span class="o">-</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">masked_lse</span><span class="p">)</span>
+    
+    <span class="n">log_likelihoods</span> <span class="o">=</span> <span class="n">vmap</span><span class="p">(</span><span class="n">single_system_ll</span><span class="p">)(</span>
+        <span class="n">F_matrices</span><span class="p">,</span> <span class="n">energies_padded</span><span class="p">,</span> <span class="n">nums_conf_padded</span><span class="p">,</span> <span class="n">conf_masks</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">log_likelihoods</span><span class="p">)</span>
+
+
 <span class="k">def</span><span class="w"> </span><span class="nf">_compute_offset_log_likelihood</span><span class="p">(</span>
     <span class="n">x</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
     <span class="n">Q</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
@@ -558,21 +624,24 @@ document.write(`
     <span class="n">energies</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
     <span class="n">nums_conf</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
 <span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute the log likelihood for the offset-constrained MBAR.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute the log likelihood for the offset-constrained MBAR.</span>
+<span class="sd">    </span>
+<span class="sd">    Falls back to loop-based computation for variable-sized systems.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">dF_full</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">Q</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span> <span class="o">+</span> <span class="n">b</span>
     <span class="n">nums_state</span> <span class="o">=</span> <span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">nums_conf</span><span class="p">]</span>
     
-    <span class="n">log_likelihood</span> <span class="o">=</span> <span class="mi">0</span>
-    <span class="n">idx</span> <span class="o">=</span> <span class="mi">0</span>
-    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">nums_state</span><span class="p">):</span>
-        <span class="c1"># Extract the MBAR free energy differences (excluding the offset state)</span>
-        <span class="n">mbar_dF</span> <span class="o">=</span> <span class="n">dF_full</span><span class="p">[</span><span class="n">idx</span> <span class="p">:</span> <span class="n">idx</span> <span class="o">+</span> <span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span>
-        
-        <span class="c1"># Compute log likelihood for this MBAR system</span>
-        <span class="n">log_likelihood</span> <span class="o">+=</span> <span class="n">_compute_log_likelihood_of_dF</span><span class="p">(</span><span class="n">mbar_dF</span><span class="p">,</span> <span class="n">energies</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">nums_conf</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
-        
-        <span class="n">idx</span> <span class="o">+=</span> <span class="n">n</span>  <span class="c1"># Move to next system</span>
+    <span class="c1"># Use lax.fori_loop for better JIT performance</span>
+    <span class="n">M</span> <span class="o">=</span> <span class="n">nums_state</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">num_systems</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">nums_state</span><span class="p">)</span>
     
+    <span class="k">def</span><span class="w"> </span><span class="nf">body_fn</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">acc</span><span class="p">):</span>
+        <span class="n">idx</span> <span class="o">=</span> <span class="n">i</span> <span class="o">*</span> <span class="n">M</span>
+        <span class="n">mbar_dF</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">lax</span><span class="o">.</span><span class="n">dynamic_slice</span><span class="p">(</span><span class="n">dF_full</span><span class="p">,</span> <span class="p">(</span><span class="n">idx</span><span class="p">,),</span> <span class="p">(</span><span class="n">M</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,))</span>
+        <span class="n">ll</span> <span class="o">=</span> <span class="n">_compute_log_likelihood_of_dF_single</span><span class="p">(</span><span class="n">mbar_dF</span><span class="p">,</span> <span class="n">energies</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">nums_conf</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">acc</span> <span class="o">+</span> <span class="n">ll</span>
+    
+    <span class="n">log_likelihood</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">lax</span><span class="o">.</span><span class="n">fori_loop</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">num_systems</span><span class="p">,</span> <span class="n">body_fn</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">log_likelihood</span>
 
 
@@ -587,6 +656,53 @@ document.write(`
     <span class="n">log_likelihood</span> <span class="o">=</span> <span class="n">_compute_offset_log_likelihood</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">Q</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">energies</span><span class="p">,</span> <span class="n">nums_conf</span><span class="p">)</span>
     <span class="n">N</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">nums_conf</span><span class="p">]))</span>
     <span class="k">return</span> <span class="o">-</span><span class="n">log_likelihood</span> <span class="o">/</span> <span class="n">N</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_compute_offset_loss_likelihood_vectorized</span><span class="p">(</span>
+    <span class="n">x</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">Q</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">b</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">energies_padded</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">nums_conf_padded</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">conf_masks</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">M</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">num_systems</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute the loss (negative normalized log likelihood) using vectorized computation.&quot;&quot;&quot;</span>
+    <span class="n">log_likelihood</span> <span class="o">=</span> <span class="n">_compute_offset_log_likelihood_vectorized</span><span class="p">(</span>
+        <span class="n">x</span><span class="p">,</span> <span class="n">Q</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">energies_padded</span><span class="p">,</span> <span class="n">nums_conf_padded</span><span class="p">,</span> <span class="n">conf_masks</span><span class="p">,</span> <span class="n">M</span><span class="p">,</span> <span class="n">num_systems</span>
+    <span class="p">)</span>
+    <span class="n">N</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">nums_conf_padded</span><span class="p">)</span>
+    <span class="k">return</span> <span class="o">-</span><span class="n">log_likelihood</span> <span class="o">/</span> <span class="n">N</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_prepare_padded_arrays</span><span class="p">(</span>
+    <span class="n">energies</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
+    <span class="n">nums_conf</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Prepare padded arrays for vectorized computation.</span>
+<span class="sd">    </span>
+<span class="sd">    Pads all energy matrices to the same shape so they can be stacked.</span>
+<span class="sd">    Returns padded energies, padded num_conf, and configuration masks.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">num_systems</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">energies</span><span class="p">)</span>
+    <span class="n">M</span> <span class="o">=</span> <span class="n">energies</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>  <span class="c1"># Number of states (same for all systems)</span>
+    
+    <span class="c1"># Find max number of configurations across all systems</span>
+    <span class="n">max_n_conf</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">energies</span><span class="p">)</span>
+    
+    <span class="c1"># Pad energies to (num_systems, M, max_n_conf)</span>
+    <span class="n">energies_padded</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">num_systems</span><span class="p">,</span> <span class="n">M</span><span class="p">,</span> <span class="n">max_n_conf</span><span class="p">))</span>
+    <span class="n">nums_conf_padded</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">num_systems</span><span class="p">,</span> <span class="n">M</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
+    <span class="n">conf_masks</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">num_systems</span><span class="p">,</span> <span class="n">max_n_conf</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+    
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">energy</span><span class="p">,</span> <span class="n">num_conf</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">energies</span><span class="p">,</span> <span class="n">nums_conf</span><span class="p">)):</span>
+        <span class="n">n_conf</span> <span class="o">=</span> <span class="n">energy</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">energies_padded</span> <span class="o">=</span> <span class="n">energies_padded</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:,</span> <span class="p">:</span><span class="n">n_conf</span><span class="p">]</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">energy</span><span class="p">)</span>
+        <span class="n">nums_conf_padded</span> <span class="o">=</span> <span class="n">nums_conf_padded</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">num_conf</span><span class="p">)</span>
+        <span class="n">conf_masks</span> <span class="o">=</span> <span class="n">conf_masks</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:</span><span class="n">n_conf</span><span class="p">]</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="kc">True</span><span class="p">)</span>
+    
+    <span class="k">return</span> <span class="n">energies_padded</span><span class="p">,</span> <span class="n">nums_conf_padded</span><span class="p">,</span> <span class="n">conf_masks</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_compute_offset_projection</span><span class="p">(</span><span class="n">nums_state</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">offsets</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">):</span>

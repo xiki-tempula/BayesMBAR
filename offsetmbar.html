@@ -405,7 +405,7 @@ document.write(`
 <p>i.e., the reference state 0 is fixed to zero, and all others are expressed as differences.</p>
 <p>The standard MBAR log-likelihood (implemented via <code class="docutils literal notranslate"><span class="pre">_compute_log_likelihood_of_dF</span></code>) is a function</p>
 <div class="math notranslate nohighlight">
-\[\log \mathcal{L}_i(\mathbf{d}_i; \text{energies}_i, \text{nums\_conf}_i),\]</div>
+\[\log \mathcal{L}_i(\mathbf{d}_i; \text{energies}_i, \text{nums_conf}_i),\]</div>
 <p>and the joint log-likelihood across systems (without coupling) would be</p>
 <div class="math notranslate nohighlight">
 \[\log \mathcal{L}(\{\mathbf{d}_i\}) = \sum_{i=0}^{S-1} \log \mathcal{L}_i(\mathbf{d}_i).\]</div>
@@ -507,7 +507,7 @@ c
 \[\Delta F_{i,j} = x_{(i,j)}, \quad j=0,\dots,M-3.\]</div>
 <p>In matrix form, this means that for corresponding indices,</p>
 <div class="math notranslate nohighlight">
-\[Q[\text{dF\_idx} + j, \text{x\_idx} + j] = 1,\quad b[\text{dF\_idx} + j] = 0.\]</div>
+\[Q[\text{dF_idx} + j, \text{x_idx} + j] = 1,\quad b[\text{dF_idx} + j] = 0.\]</div>
 </li>
 <li><p><strong>Last MBAR difference</strong> <span class="math notranslate nohighlight">\(\Delta F_{i,M-2}\)</span> <strong>satisfies the constraint</strong>:</p>
 <p>We know</p>
@@ -519,8 +519,8 @@ c
 \[\Delta F_{i,M-2} = x_c - \mathrm{offset}_i.\]</div>
 <p>In matrix/vector terms:</p>
 <div class="math notranslate nohighlight">
-\[Q[\text{dF\_idx} + M - 2, -1] = 1, \quad
-b[\text{dF\_idx} + M - 2] = -\mathrm{offset}_i.\]</div>
+\[Q[\text{dF_idx} + M - 2, -1] = 1, \quad
+b[\text{dF_idx} + M - 2] = -\mathrm{offset}_i.\]</div>
 </li>
 <li><p><strong>Offset state has free energy</strong> <span class="math notranslate nohighlight">\(c\)</span>:</p>
 <p>The augmented offset state free energy is set to equal the same constant <span class="math notranslate nohighlight">\(c\)</span>:</p>
@@ -633,7 +633,7 @@ b[\text{dF\_idx} + M - 2] = -\mathrm{offset}_i.\]</div>
 </li>
 <li><p>The state free energies per system are computed via <code class="docutils literal notranslate"><span class="pre">_dF_to_state_F_with_offset</span></code>:</p>
 <div class="math notranslate nohighlight">
-\[\{\mathbf{F}_i^*\} = \text{\_dF\_to\_state\_F\_with\_offset}(\mathbf{d}^*, \text{nums\_state}).\]</div>
+\[\{\mathbf{F}_i^*\} = \text{_dF_to_state_F_with_offset}(\mathbf{d}^*, \text{nums_state}).\]</div>
 </li>
 </ul>
 <p>These are stored as:</p>
@@ -655,7 +655,7 @@ b[\text{dF\_idx} + M - 2] = -\mathrm{offset}_i.\]</div>
 <li><p>Defines</p>
 <div class="math notranslate nohighlight">
 \[\log p(\mathbf{x}) := \log \mathcal{L}(\mathbf{x})
-= \text{\_compute\_offset\_log\_likelihood}(\mathbf{x}, Q, b, \text{energies}, \text{nums\_conf}).\]</div>
+= \text{_compute_offset_log_likelihood}(\mathbf{x}, Q, b, \text{energies}, \text{nums_conf}).\]</div>
 <p>(Strictly speaking, this is the log-likelihood; one can interpret it as log-posterior if combined with a flat prior.)</p>
 </li>
 <li><p>Uses <code class="docutils literal notranslate"><span class="pre">_sample_from_logdensity</span></code> (an HMC-based sampler from <code class="docutils literal notranslate"><span class="pre">bayesmbar.py</span></code>) with:</p>

@@ -337,6 +337,7 @@ document.write(`
             <nav aria-label="Page">
                 <ul class="visible nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#abstract">Abstract</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#schematic-constraint-and-implementation">Schematic (constraint and implementation)</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#problem-setting">1. Problem Setting</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#classical-mbar-parameterization">2. Classical MBAR Parameterization</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#offset-constraint-across-systems">3. Offset Constraint Across Systems</a></li>
@@ -369,14 +370,29 @@ document.write(`
 <p>We present <strong>OffsetMBAR</strong>, a coupled Bayesian MBAR (Multistate Bennett Acceptance Ratio) formulation that enforces a linear constraint across multiple MBAR systems. Each system corresponds to a standard MBAR problem with its own set of thermodynamic states, reduced energies, and sample counts, but we require that the free energy of a particular state in each system, shifted by a given scalar offset, is identical across systems. We formalize this constraint, derive a linear parameterization in terms of a lower-dimensional parameter vector, and prove that the implementation correctly enforces the constraint while preserving the MBAR likelihood. The resulting optimization problem is solved by Newton’s method or L-BFGS-B, and uncertainty is quantified by Hamiltonian Monte Carlo (HMC) sampling in the reduced parameter space.</p>
 </section>
 <hr class="docutils" />
+<section id="schematic-constraint-and-implementation">
+<h2>Schematic (constraint and implementation)<a class="headerlink" href="#schematic-constraint-and-implementation" title="Link to this heading">#</a></h2>
+<figure class="align-center" id="id1">
+<a class="reference internal image-reference" href="_static/offsetmbar_constraint.png"><img alt="OffsetMBAR schematic showing the offset constraint and the linear projection dF = Q x + b." src="_static/offsetmbar_constraint.png" style="width: 95%;" />
+</a>
+<figcaption>
+<p><span class="caption-text"><strong>OffsetMBAR overview.</strong> (a) The constraint enforces <span class="math notranslate nohighlight">\(F_{i,M-1} + \mathrm{offset}_i = c\)</span> across coupled MBAR systems. (b) The implementation enforces this by optimizing in a reduced parameter space <span class="math notranslate nohighlight">\(\mathbf{x}\)</span> and mapping to constrained free-energy differences via <span class="math notranslate nohighlight">\(\mathbf{dF} = Q\mathbf{x} + \mathbf{b}\)</span>.</span><a class="headerlink" href="#id1" title="Link to this image">#</a></p>
+</figcaption>
+</figure>
+<p>Vector version for manuscripts: <code class="docutils literal notranslate"><span class="pre">docs/source/_static/offsetmbar_constraint.pdf</span></code> (and <code class="docutils literal notranslate"><span class="pre">.svg</span></code>).</p>
+</section>
 <section id="problem-setting">
 <h2>1. Problem Setting<a class="headerlink" href="#problem-setting" title="Link to this heading">#</a></h2>
-<p>Consider <span class="math notranslate nohighlight">\(S\)</span> MBAR systems, indexed by <span class="math notranslate nohighlight">\(i = 0, \dots, S-1\)</span>. Each system has
+<p>Consider <span class="math notranslate nohighlight">\(S\)</span> MBAR systems, indexed by <span class="math notranslate nohighlight">\(i = 1, \dots, S\)</span>. Each system has
 <span class="math notranslate nohighlight">\(M\)</span> thermodynamic states (assumed identical across systems):</p>
 <ul class="simple">
 <li><p><strong>Energies</strong>: For system <span class="math notranslate nohighlight">\(i\)</span>, we have reduced potentials <span class="math notranslate nohighlight">\(u_{i,k}(\mathbf{x})\)</span> for states <span class="math notranslate nohighlight">\(k = 0, \dots, M-1\)</span>, evaluated on a set of configurations (trajectories) with associated <strong>counts</strong>.</p></li>
 <li><p><strong>Counts</strong>: Let <span class="math notranslate nohighlight">\(N_{i,k}\)</span> be the number of configurations sampled from state <span class="math notranslate nohighlight">\(k\)</span> in system <span class="math notranslate nohighlight">\(i\)</span>. The code represents these as arrays <code class="docutils literal notranslate"><span class="pre">energies[i]</span></code> and <code class="docutils literal notranslate"><span class="pre">nums_conf[i]</span></code>.</p></li>
 </ul>
+<p><strong>Indexing note:</strong> throughout this document we use <strong>1-indexed</strong> coupled-system labels
+(<span class="math notranslate nohighlight">\(i=1,\dots,S\)</span>) to match the figure and typical manuscript conventions. The Python
+implementation uses standard <strong>0-indexed</strong> lists/arrays, so you will see system indices
+<code class="docutils literal notranslate"><span class="pre">0..S-1</span></code> in code.</p>
 <p>We denote by</p>
 <div class="math notranslate nohighlight">
 \[F_{i,k}\]</div>
@@ -385,30 +401,33 @@ document.write(`
 <hr class="docutils" />
 <section id="classical-mbar-parameterization">
 <h2>2. Classical MBAR Parameterization<a class="headerlink" href="#classical-mbar-parameterization" title="Link to this heading">#</a></h2>
-<p>For each system <span class="math notranslate nohighlight">\(i\)</span>, we define free energy differences relative to state 0:</p>
+<p>For each system <span class="math notranslate nohighlight">\(i\)</span>, we define free energy differences relative to state 0 using the
+common convention:</p>
 <div class="math notranslate nohighlight">
-\[\Delta F_{i,k} \equiv F_{i,k+1} - F_{i,0}, \quad k = 0,\dots,M-2.\]</div>
-<p>Thus each system has <span class="math notranslate nohighlight">\(M-1\)</span> independent parameters <span class="math notranslate nohighlight">\(\Delta F_{i,0}, \dots, \Delta F_{i,M-2}\)</span>.</p>
+\[\Delta F_{i,k} \equiv F_{i,k} - F_{i,0}, \quad k = 0,\dots,M-1.\]</div>
+<p>Note that <span class="math notranslate nohighlight">\(\Delta F_{i,0}=0\)</span> by definition, so each system has <span class="math notranslate nohighlight">\(M-1\)</span> nontrivial
+free-energy differences <span class="math notranslate nohighlight">\(\Delta F_{i,1}, \dots, \Delta F_{i,M-1}\)</span>.</p>
 <p>In vector form, for system <span class="math notranslate nohighlight">\(i\)</span> we define</p>
 <div class="math notranslate nohighlight">
 \[\begin{split}\mathbf{d}_i =
 \begin{bmatrix}
-\Delta F_{i,0} \\
-\Delta F_{i,1} \\
 \vdots \\
-\Delta F_{i,M-2}
+\Delta F_{i,1} \\
+\Delta F_{i,2} \\
+\vdots \\
+\Delta F_{i,M-1}
 \end{bmatrix}
 \in \mathbb{R}^{M-1}.\end{split}\]</div>
 <p>The associated <strong>state free energies</strong> can be reconstructed as</p>
 <div class="math notranslate nohighlight">
-\[F_{i,0} = 0, \quad F_{i,k} = \Delta F_{i,k-1} \;\; \text{for } k=1,\dots, M-1.\]</div>
+\[F_{i,0} = 0, \quad F_{i,k} = \Delta F_{i,k} \;\; \text{for } k=1,\dots, M-1.\]</div>
 <p>i.e., the reference state 0 is fixed to zero, and all others are expressed as differences.</p>
 <p>The standard MBAR log-likelihood (implemented via <code class="docutils literal notranslate"><span class="pre">_compute_log_likelihood_of_dF</span></code>) is a function</p>
 <div class="math notranslate nohighlight">
 \[\log \mathcal{L}_i(\mathbf{d}_i; \text{energies}_i, \text{nums_conf}_i),\]</div>
 <p>and the joint log-likelihood across systems (without coupling) would be</p>
 <div class="math notranslate nohighlight">
-\[\log \mathcal{L}(\{\mathbf{d}_i\}) = \sum_{i=0}^{S-1} \log \mathcal{L}_i(\mathbf{d}_i).\]</div>
+\[\log \mathcal{L}(\{\mathbf{d}_i\}) = \sum_{i=1}^{S} \log \mathcal{L}_i(\mathbf{d}_i).\]</div>
 </section>
 <hr class="docutils" />
 <section id="offset-constraint-across-systems">
@@ -421,9 +440,10 @@ document.write(`
 <div class="math notranslate nohighlight">
 \[F_{i,M-1} + \mathrm{offset}_i = c \quad \text{for all } i,\]</div>
 <p>where <span class="math notranslate nohighlight">\(c\)</span> is a shared constant (a new global parameter).</p>
-<p>Since <span class="math notranslate nohighlight">\(F_{i,M-1} = \Delta F_{i,M-2}\)</span> (because it is the last MBAR state above the reference 0), the constraint can be written equivalently as</p>
+<p>Since <span class="math notranslate nohighlight">\(F_{i,M-1} = \Delta F_{i,M-1}\)</span> under this convention (with <span class="math notranslate nohighlight">\(F_{i,0}=0\)</span>), the
+constraint can be written equivalently as</p>
 <div class="math notranslate nohighlight">
-\[\Delta F_{i,M-2} + \mathrm{offset}_i = c \quad \text{for all } i.\]</div>
+\[\Delta F_{i,M-1} + \mathrm{offset}_i = c \quad \text{for all } i.\]</div>
 <p>This defines a set of linear constraints tying together the last free-energy differences of each system.</p>
 </section>
 <hr class="docutils" />
@@ -445,9 +465,13 @@ document.write(`
 \[F_{i,M-1} + \mathrm{offset}_i = F_{i,M} = c, \quad \forall i.\]</div>
 <p>This structure is reflected in <code class="docutils literal notranslate"><span class="pre">_dF_to_state_F_with_offset</span></code>, where for each system segment:</p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">mbar_dF</span> <span class="pre">=</span> <span class="pre">dF[...,</span> <span class="pre">idx</span> <span class="pre">:</span> <span class="pre">idx</span> <span class="pre">+</span> <span class="pre">n</span> <span class="pre">-</span> <span class="pre">1]</span></code> holds the <span class="math notranslate nohighlight">\(M-1\)</span> MBAR free energy differences <span class="math notranslate nohighlight">\(\Delta F_{i,0}, \dots, \Delta F_{i,M-2}\)</span>,</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">mbar_dF</span> <span class="pre">=</span> <span class="pre">dF[...,</span> <span class="pre">idx</span> <span class="pre">:</span> <span class="pre">idx</span> <span class="pre">+</span> <span class="pre">n</span> <span class="pre">-</span> <span class="pre">1]</span></code> holds the <span class="math notranslate nohighlight">\(M-1\)</span> nontrivial MBAR differences
+<span class="math notranslate nohighlight">\(\Delta F_{i,1}, \dots, \Delta F_{i,M-1}\)</span>,</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">offset_value</span> <span class="pre">=</span> <span class="pre">dF[...,</span> <span class="pre">idx</span> <span class="pre">+</span> <span class="pre">n</span> <span class="pre">-</span> <span class="pre">1]</span></code> holds the extra offset state free energy, conceptually equal to <span class="math notranslate nohighlight">\(c\)</span>.</p></li>
 </ul>
+<p><strong>Implementation note (indexing):</strong> for convenience, the code stores the nontrivial differences
+in a length-<span class="math notranslate nohighlight">\(M-1\)</span> vector indexed from 0, i.e. the stored element <code class="docutils literal notranslate"><span class="pre">mbar_dF[k]</span></code> corresponds
+to <span class="math notranslate nohighlight">\(\Delta F_{i,k+1}\)</span> in the common convention.</p>
 <p>The function reconstructs the full vector of free energies for system <span class="math notranslate nohighlight">\(i\)</span> as</p>
 <div class="math notranslate nohighlight">
 \[\begin{split}\mathbf{F}_i =
@@ -489,9 +513,10 @@ c
 </ul>
 <section id="independent-parameters-mathbf-x">
 <h3>5.1. Independent Parameters <span class="math notranslate nohighlight">\(\mathbf{x}\)</span><a class="headerlink" href="#independent-parameters-mathbf-x" title="Link to this heading">#</a></h3>
-<p>For each system <span class="math notranslate nohighlight">\(i\)</span>, we treat the <strong>first</strong> <span class="math notranslate nohighlight">\(M-2\)</span> <strong>MBAR differences</strong> as unconstrained:</p>
+<p>For each system <span class="math notranslate nohighlight">\(i\)</span>, we treat the <span class="math notranslate nohighlight">\(M-2\)</span> nontrivial differences
+<span class="math notranslate nohighlight">\(\Delta F_{i,1},\dots,\Delta F_{i,M-2}\)</span> as unconstrained:</p>
 <div class="math notranslate nohighlight">
-\[x_{(i,j)} = \Delta F_{i,j}, \quad j = 0, \dots, M-3.\]</div>
+\[x_{(i,j)} = \Delta F_{i,j+1}, \quad j = 0, \dots, M-3.\]</div>
 <p>This contributes <span class="math notranslate nohighlight">\(S (M-2)\)</span> free parameters. In addition, we introduce a global scalar:</p>
 <div class="math notranslate nohighlight">
 \[x_{c} = c,\]</div>
@@ -502,21 +527,21 @@ c
 <h3>5.2. Definition of <span class="math notranslate nohighlight">\(Q\)</span> and <span class="math notranslate nohighlight">\(b\)</span><a class="headerlink" href="#definition-of-q-and-b" title="Link to this heading">#</a></h3>
 <p>For system <span class="math notranslate nohighlight">\(i\)</span> and its block within <span class="math notranslate nohighlight">\(\mathbf{d}\)</span>, the code enforces:</p>
 <ol class="arabic">
-<li><p><strong>First</strong> <span class="math notranslate nohighlight">\(M-2\)</span> <strong>MBAR differences are identity</strong>:</p>
+<li><p><strong>Unconstrained differences are identity</strong>:</p>
 <div class="math notranslate nohighlight">
-\[\Delta F_{i,j} = x_{(i,j)}, \quad j=0,\dots,M-3.\]</div>
+\[\Delta F_{i,j+1} = x_{(i,j)}, \quad j=0,\dots,M-3.\]</div>
 <p>In matrix form, this means that for corresponding indices,</p>
 <div class="math notranslate nohighlight">
 \[Q[\text{dF_idx} + j, \text{x_idx} + j] = 1,\quad b[\text{dF_idx} + j] = 0.\]</div>
 </li>
-<li><p><strong>Last MBAR difference</strong> <span class="math notranslate nohighlight">\(\Delta F_{i,M-2}\)</span> <strong>satisfies the constraint</strong>:</p>
+<li><p><strong>Constrained last difference</strong> <span class="math notranslate nohighlight">\(\Delta F_{i,M-1}\)</span> <strong>satisfies the constraint</strong>:</p>
 <p>We know</p>
 <div class="math notranslate nohighlight">
-\[\Delta F_{i,M-2} + \mathrm{offset}_i = c \Rightarrow
-\Delta F_{i,M-2} = c - \mathrm{offset}_i.\]</div>
+\[\Delta F_{i,M-1} + \mathrm{offset}_i = c \Rightarrow
+\Delta F_{i,M-1} = c - \mathrm{offset}_i.\]</div>
 <p>Hence this component is <em>not</em> free; it is given by</p>
 <div class="math notranslate nohighlight">
-\[\Delta F_{i,M-2} = x_c - \mathrm{offset}_i.\]</div>
+\[\Delta F_{i,M-1} = x_c - \mathrm{offset}_i.\]</div>
 <p>In matrix/vector terms:</p>
 <div class="math notranslate nohighlight">
 \[Q[\text{dF_idx} + M - 2, -1] = 1, \quad
@@ -566,7 +591,7 @@ b[\text{dF_idx} + M - 2] = -\mathrm{offset}_i.\]</div>
 </ul>
 <p>Then the <strong>last MBAR state</strong> free energy is</p>
 <div class="math notranslate nohighlight">
-\[F_{i,M-1} = \Delta F_{i,M-2} = x_c - \mathrm{offset}_i.\]</div>
+\[F_{i,M-1} = \Delta F_{i,M-1} = x_c - \mathrm{offset}_i.\]</div>
 <p>Therefore,</p>
 <div class="math notranslate nohighlight">
 \[F_{i,M-1} + \mathrm{offset}_i = (x_c - \mathrm{offset}_i) + \mathrm{offset}_i = x_c,\]</div>
@@ -607,7 +632,7 @@ b[\text{dF_idx} + M - 2] = -\mathrm{offset}_i.\]</div>
 \[\mathcal{J}(\mathbf{x}) = - \frac{1}{N_{\text{tot}}} \log \mathcal{L}(\mathbf{x}),\]</div>
 <p>where</p>
 <div class="math notranslate nohighlight">
-\[N_{\text{tot}} = \sum_{i=0}^{S-1} \sum_{k=0}^{M-1} N_{i,k}\]</div>
+\[N_{\text{tot}} = \sum_{i=1}^{S} \sum_{k=0}^{M-1} N_{i,k}\]</div>
 <p>is the total number of samples across all systems. This normalization does not change the optimizer’s argmin, only the scale of the objective.</p>
 <p><strong>Key point:</strong> Because the map <span class="math notranslate nohighlight">\(\mathbf{x} \mapsto \{\mathbf{d}_i\}\)</span> is linear and injective (ignoring the usual additive reference freedom, which is fixed by setting <span class="math notranslate nohighlight">\(F_{i,0}=0\)</span>), optimizing <span class="math notranslate nohighlight">\(\mathcal{J}(\mathbf{x})\)</span> is equivalent to optimizing the MBAR log-likelihood in the constrained subspace.</p>
 </section>
@@ -727,6 +752,7 @@ b[\text{dF_idx} + M - 2] = -\mathrm{offset}_i.\]</div>
   <nav class="bd-toc-nav page-toc">
     <ul class="visible nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#abstract">Abstract</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#schematic-constraint-and-implementation">Schematic (constraint and implementation)</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#problem-setting">1. Problem Setting</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#classical-mbar-parameterization">2. Classical MBAR Parameterization</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#offset-constraint-across-systems">3. Offset Constraint Across Systems</a></li>

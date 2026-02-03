@@ -357,6 +357,8 @@ document.write(`
 
         <span class="k">if</span> <span class="n">state_cv</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_state_cv</span> <span class="o">=</span> <span class="n">state_cv</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_state_cv</span> <span class="o">=</span> <span class="kc">None</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">_sample_size</span> <span class="o">=</span> <span class="n">sample_size</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_warmup_steps</span> <span class="o">=</span> <span class="n">warmup_steps</span>
@@ -369,31 +371,39 @@ document.write(`
         <span class="bp">self</span><span class="o">.</span><span class="n">_m</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_energy</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_n</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_energy</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
 
-        <span class="c1"># We first compute the mode estimate based on the likelihood</span>
-        <span class="c1"># because it is used in both the uniform and normal priors.</span>
-        <span class="c1"># The mode estimate based on the likelihood is the solution to the MBAR equation.</span>
+        <span class="c1"># Flags to track which computations have been performed (lazy evaluation)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_mode_ll_computed</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_samples_ll_computed</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_posterior_mode_computed</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_posterior_samples_computed</span> <span class="o">=</span> <span class="kc">False</span>
 
-        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Solve for the mode of the likelihood&quot;</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_ensure_mode_ll_computed</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute the mode of the likelihood (solution to MBAR equation).&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mode_ll_computed</span><span class="p">:</span>
+            <span class="k">return</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Solve for the mode of the likelihood&quot;</span><span class="p">)</span>
         <span class="n">dF_init</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">_m</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,))</span>
         <span class="n">dF</span> <span class="o">=</span> <span class="n">_solve_mbar</span><span class="p">(</span>
             <span class="n">dF_init</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_energy</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_conf</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_method</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_verbose</span>
         <span class="p">)</span>
 
-        <span class="c1"># f = jit(value_and_grad(_compute_loss_likelihood_of_dF))</span>
-        <span class="c1"># hess = jit(hessian(_compute_loss_likelihood_of_dF))</span>
-        <span class="c1"># res = fmin_newton(f, hess, dF_init, args=(self._energy, self._num_conf))</span>
-        <span class="c1"># dF = res[&quot;x&quot;]</span>
-
         <span class="bp">self</span><span class="o">.</span><span class="n">_dF_mode_ll</span> <span class="o">=</span> <span class="n">dF</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_F_mode_ll</span> <span class="o">=</span> <span class="n">_dF_to_F</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_dF_mode_ll</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_conf</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_mode_ll_computed</span> <span class="o">=</span> <span class="kc">True</span>
 
-        <span class="c1"># sample dF based on the likelihood.</span>
-        <span class="c1"># When the uniform prior is used, the posterior distribution of dF is</span>
-        <span class="c1"># the same as the likelihood function.</span>
-        <span class="c1"># Thefore so these samples are also samples from the posterior</span>
-        <span class="c1"># distribution of dF when the uniform prior is used.</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_ensure_samples_ll_computed</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute samples from the likelihood using MCMC.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_samples_ll_computed</span><span class="p">:</span>
+            <span class="k">return</span>
 
-        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;=====================================================&quot;</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Sample from the likelihood&quot;</span><span class="p">)</span>
+        <span class="c1"># Mode is needed as initialization for MCMC</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_mode_ll_computed</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;=====================================================&quot;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Sample from the likelihood&quot;</span><span class="p">)</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">_rng_key</span><span class="p">,</span> <span class="n">subkey</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rng_key</span><span class="p">)</span>
 
@@ -409,155 +419,179 @@ document.write(`
             <span class="bp">self</span><span class="o">.</span><span class="n">_verbose</span><span class="p">,</span>
         <span class="p">)</span>
 
-        <span class="c1">## compute the mean, covariance, and precision of dF based on the samples from the likelihood</span>
+        <span class="c1"># Compute mean, covariance, and precision from samples</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_dF_mean_ll</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_dF_samples_ll</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-        <span class="c1"># Ensure covariance is 2D for Cholesky decomposition (handle scalar case)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_dF_cov_ll</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">cov</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_dF_samples_ll</span><span class="o">.</span><span class="n">T</span><span class="p">))</span>
 
         <span class="n">L</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">cholesky</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_dF_cov_ll</span><span class="p">)</span>
         <span class="n">L_inv</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">scipy</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve_triangular</span><span class="p">(</span><span class="n">L</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">L</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="n">lower</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_dF_prec_ll</span> <span class="o">=</span> <span class="n">L_inv</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">L_inv</span><span class="p">)</span>
-        <span class="c1"># self._dF_prec_ll = jnp.linalg.inv(self._dF_cov_ll)</span>
 
-        <span class="bp">self</span><span class="o">.</span><span class="n">_F_mode_ll</span> <span class="o">=</span> <span class="n">_dF_to_F</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_dF_mode_ll</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_conf</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_F_samples_ll</span> <span class="o">=</span> <span class="n">_dF_to_F</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_dF_samples_ll</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_conf</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_F_mean_ll</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_F_samples_ll</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_F_cov_ll</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">cov</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_F_samples_ll</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_F_cov_ll</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">cov</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_F_samples_ll</span><span class="o">.</span><span class="n">T</span><span class="p">))</span>
 
-        <span class="c1">## we are done here if the prior is uniform.</span>
-        <span class="c1">## When normal prior is used, we need to learn the hyperparameters of the prior and then sample dF from the posterior distribution of dF.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_samples_ll_computed</span> <span class="o">=</span> <span class="kc">True</span>
 
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prior</span> <span class="o">==</span> <span class="s2">&quot;normal&quot;</span><span class="p">:</span>
-            <span class="n">_data</span> <span class="o">=</span> <span class="p">{</span>
-                <span class="s2">&quot;energy&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_energy</span><span class="p">,</span>
-                <span class="s2">&quot;num_conf&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_conf</span><span class="p">,</span>
-                <span class="s2">&quot;dF_mean_ll&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dF_mean_ll</span><span class="p">,</span>
-                <span class="s2">&quot;dF_prec_ll&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dF_prec_ll</span><span class="p">,</span>
-                <span class="s2">&quot;state_cv&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_state_cv</span><span class="p">,</span>
-            <span class="p">}</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_ensure_posterior_mode_computed</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute the posterior mode (normal prior only).&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_posterior_mode_computed</span><span class="p">:</span>
+            <span class="k">return</span>
 
-            <span class="c1">## mean function of the prior</span>
-            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mean_name</span> <span class="o">==</span> <span class="s2">&quot;constant&quot;</span><span class="p">:</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">mean_order</span> <span class="o">=</span> <span class="mi">0</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">mean</span> <span class="o">=</span> <span class="n">partial</span><span class="p">(</span><span class="n">_mean</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mean_order</span><span class="p">)</span>
-            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mean_name</span> <span class="o">==</span> <span class="s2">&quot;linear&quot;</span><span class="p">:</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">mean_order</span> <span class="o">=</span> <span class="mi">1</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">mean</span> <span class="o">=</span> <span class="n">partial</span><span class="p">(</span><span class="n">_mean</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mean_order</span><span class="p">)</span>
-            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mean_name</span> <span class="o">==</span> <span class="s2">&quot;quadratic&quot;</span><span class="p">:</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">mean_order</span> <span class="o">=</span> <span class="mi">2</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">mean</span> <span class="o">=</span> <span class="n">partial</span><span class="p">(</span><span class="n">_mean</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mean_order</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prior</span> <span class="o">!=</span> <span class="s2">&quot;normal&quot;</span><span class="p">:</span>
+            <span class="k">return</span>
 
-            <span class="c1">## learn the hyperparameters of the prior</span>
-            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_kernel_name</span> <span class="o">==</span> <span class="s2">&quot;SE&quot;</span><span class="p">:</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">kernel</span> <span class="o">=</span> <span class="n">_kernel_SE</span>
-            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_kernel_name</span> <span class="o">==</span> <span class="s2">&quot;Matern52&quot;</span><span class="p">:</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">kernel</span> <span class="o">=</span> <span class="n">_kernel_Matern52</span>
-            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_kernel_name</span> <span class="o">==</span> <span class="s2">&quot;Matern32&quot;</span><span class="p">:</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">kernel</span> <span class="o">=</span> <span class="n">_kernel_Matern32</span>
-            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_kernel_name</span> <span class="o">==</span> <span class="s2">&quot;RQ&quot;</span><span class="p">:</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">kernel</span> <span class="o">=</span> <span class="n">_kernel_RQ</span>
+        <span class="c1"># Need samples from likelihood for hyperparameter optimization</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_samples_ll_computed</span><span class="p">()</span>
 
-            <span class="c1">## initialize the hyperparameters based on the mode of the likelihood</span>
-            <span class="n">params</span> <span class="o">=</span> <span class="n">_init_params</span><span class="p">(</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">mean_order</span><span class="p">,</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_kernel_name</span><span class="p">,</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_dF_mode_ll</span><span class="p">,</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_state_cv</span><span class="p">,</span>
+        <span class="n">_data</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;energy&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_energy</span><span class="p">,</span>
+            <span class="s2">&quot;num_conf&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_conf</span><span class="p">,</span>
+            <span class="s2">&quot;dF_mean_ll&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dF_mean_ll</span><span class="p">,</span>
+            <span class="s2">&quot;dF_prec_ll&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dF_prec_ll</span><span class="p">,</span>
+            <span class="s2">&quot;state_cv&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_state_cv</span><span class="p">,</span>
+        <span class="p">}</span>
+
+        <span class="c1"># Mean function of the prior</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mean_name</span> <span class="o">==</span> <span class="s2">&quot;constant&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">mean_order</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">mean</span> <span class="o">=</span> <span class="n">partial</span><span class="p">(</span><span class="n">_mean</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mean_order</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mean_name</span> <span class="o">==</span> <span class="s2">&quot;linear&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">mean_order</span> <span class="o">=</span> <span class="mi">1</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">mean</span> <span class="o">=</span> <span class="n">partial</span><span class="p">(</span><span class="n">_mean</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mean_order</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mean_name</span> <span class="o">==</span> <span class="s2">&quot;quadratic&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">mean_order</span> <span class="o">=</span> <span class="mi">2</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">mean</span> <span class="o">=</span> <span class="n">partial</span><span class="p">(</span><span class="n">_mean</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mean_order</span><span class="p">)</span>
+
+        <span class="c1"># Kernel function of the prior</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_kernel_name</span> <span class="o">==</span> <span class="s2">&quot;SE&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">kernel</span> <span class="o">=</span> <span class="n">_kernel_SE</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_kernel_name</span> <span class="o">==</span> <span class="s2">&quot;Matern52&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">kernel</span> <span class="o">=</span> <span class="n">_kernel_Matern52</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_kernel_name</span> <span class="o">==</span> <span class="s2">&quot;Matern32&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">kernel</span> <span class="o">=</span> <span class="n">_kernel_Matern32</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_kernel_name</span> <span class="o">==</span> <span class="s2">&quot;RQ&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">kernel</span> <span class="o">=</span> <span class="n">_kernel_RQ</span>
+
+        <span class="c1"># Initialize hyperparameters based on the mode of the likelihood</span>
+        <span class="n">params</span> <span class="o">=</span> <span class="n">_init_params</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">mean_order</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_kernel_name</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_dF_mode_ll</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_state_cv</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_num_conf</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">raw_params</span> <span class="o">=</span> <span class="n">_params_to_raw</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+
+        <span class="c1"># Optimize the hyperparameters</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_rng_key</span><span class="p">,</span> <span class="n">subkey</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rng_key</span><span class="p">)</span>
+        <span class="n">optimizer</span> <span class="o">=</span> <span class="n">sgd</span><span class="p">(</span><span class="n">learning_rate</span><span class="o">=</span><span class="mf">1e-3</span><span class="p">,</span> <span class="n">momentum</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span> <span class="n">nesterov</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">opt_state</span> <span class="o">=</span> <span class="n">optimizer</span><span class="o">.</span><span class="n">init</span><span class="p">(</span><span class="n">raw_params</span><span class="p">)</span>
+
+        <span class="nd">@partial</span><span class="p">(</span><span class="n">jit</span><span class="p">,</span> <span class="n">static_argnames</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;mean&quot;</span><span class="p">,</span> <span class="s2">&quot;kernel&quot;</span><span class="p">])</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">step</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">raw_params</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">,</span> <span class="n">mean</span><span class="p">,</span> <span class="n">kernel</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+            <span class="n">loss</span><span class="p">,</span> <span class="n">grads</span> <span class="o">=</span> <span class="n">_compute_elbo_loss</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">raw_params</span><span class="p">,</span> <span class="n">mean</span><span class="p">,</span> <span class="n">kernel</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
+            <span class="n">update</span><span class="p">,</span> <span class="n">opt_state</span> <span class="o">=</span> <span class="n">optimizer</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">grads</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">)</span>
+            <span class="n">raw_params</span> <span class="o">=</span> <span class="n">optax</span><span class="o">.</span><span class="n">apply_updates</span><span class="p">(</span><span class="n">raw_params</span><span class="p">,</span> <span class="n">update</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">loss</span><span class="p">,</span> <span class="n">raw_params</span><span class="p">,</span> <span class="n">opt_state</span>
+
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_optimize_steps</span><span class="p">):</span>
+            <span class="n">loss</span><span class="p">,</span> <span class="n">raw_params</span><span class="p">,</span> <span class="n">opt_state</span> <span class="o">=</span> <span class="n">step</span><span class="p">(</span>
+                <span class="n">subkey</span><span class="p">,</span> <span class="n">raw_params</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">mean</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">kernel</span><span class="p">,</span> <span class="n">_data</span>
+            <span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_rng_key</span><span class="p">,</span> <span class="n">subkey</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rng_key</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_verbose</span> <span class="ow">and</span> <span class="n">i</span> <span class="o">%</span> <span class="mi">100</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">params</span> <span class="o">=</span> <span class="n">_params_from_raw</span><span class="p">(</span><span class="n">raw_params</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;step: </span><span class="si">{</span><span class="n">i</span><span class="si">:</span><span class="s2">&gt;10d</span><span class="si">}</span><span class="s2">, loss: </span><span class="si">{</span><span class="n">loss</span><span class="si">:</span><span class="s2">10.4f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">_print_params</span><span class="p">(</span><span class="n">params</span><span class="p">))</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_params</span> <span class="o">=</span> <span class="n">_params_from_raw</span><span class="p">(</span><span class="n">raw_params</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_dF_mean_prior</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_params</span><span class="p">[</span><span class="s2">&quot;mean&quot;</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">_state_cv</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_dF_cov_prior</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">kernel</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_params</span><span class="p">[</span><span class="s2">&quot;kernel&quot;</span><span class="p">],</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_state_cv</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_dF_prec_prior</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_dF_cov_prior</span><span class="p">)</span>
+
+        <span class="c1"># Solve for the mode of the posterior</span>
+        <span class="n">f</span> <span class="o">=</span> <span class="n">jit</span><span class="p">(</span><span class="n">value_and_grad</span><span class="p">(</span><span class="n">_compute_loss_joint_likelihood_of_dF</span><span class="p">))</span>
+        <span class="n">hess</span> <span class="o">=</span> <span class="n">jit</span><span class="p">(</span><span class="n">hessian</span><span class="p">(</span><span class="n">_compute_loss_joint_likelihood_of_dF</span><span class="p">))</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">fmin_newton</span><span class="p">(</span>
+            <span class="n">f</span><span class="p">,</span>
+            <span class="n">hess</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_dF_mode_ll</span><span class="p">,</span>
+            <span class="n">args</span><span class="o">=</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_energy</span><span class="p">,</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">_num_conf</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_dF_mean_prior</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_dF_prec_prior</span><span class="p">,</span>
+            <span class="p">),</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_dF_mode_posterior</span> <span class="o">=</span> <span class="n">res</span><span class="p">[</span><span class="s2">&quot;x&quot;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_F_mode_posterior</span> <span class="o">=</span> <span class="n">_dF_to_F</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_dF_mode_posterior</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_conf</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_posterior_mode_computed</span> <span class="o">=</span> <span class="kc">True</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_ensure_posterior_samples_computed</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute samples from the posterior (normal prior only).&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_posterior_samples_computed</span><span class="p">:</span>
+            <span class="k">return</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prior</span> <span class="o">!=</span> <span class="s2">&quot;normal&quot;</span><span class="p">:</span>
+            <span class="k">return</span>
+
+        <span class="c1"># Need posterior mode first</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_posterior_mode_computed</span><span class="p">()</span>
+
+        <span class="c1"># Sample dF from the posterior</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">logdensity</span><span class="p">(</span><span class="n">dF</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">_compute_log_joint_likelihood_of_dF</span><span class="p">(</span>
+                <span class="n">dF</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_energy</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_num_conf</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_dF_mean_prior</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_dF_prec_prior</span><span class="p">,</span>
             <span class="p">)</span>
-            <span class="n">raw_params</span> <span class="o">=</span> <span class="n">_params_to_raw</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
 
-            <span class="c1">## optimize the hyperparameters</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_rng_key</span><span class="p">,</span> <span class="n">subkey</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rng_key</span><span class="p">)</span>
-            <span class="n">optimizer</span> <span class="o">=</span> <span class="n">sgd</span><span class="p">(</span><span class="n">learning_rate</span><span class="o">=</span><span class="mf">1e-3</span><span class="p">,</span> <span class="n">momentum</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span> <span class="n">nesterov</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-            <span class="n">opt_state</span> <span class="o">=</span> <span class="n">optimizer</span><span class="o">.</span><span class="n">init</span><span class="p">(</span><span class="n">raw_params</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_rng_key</span><span class="p">,</span> <span class="n">subkey</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rng_key</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_dF_samples_posterior</span> <span class="o">=</span> <span class="n">_sample_from_logdensity</span><span class="p">(</span>
+            <span class="n">subkey</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_dF_mode_posterior</span><span class="p">,</span>
+            <span class="n">logdensity</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_warmup_steps</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_sample_size</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_verbose</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_dF_mean_posterior</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_dF_samples_posterior</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_dF_cov_posterior</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">cov</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_dF_samples_posterior</span><span class="o">.</span><span class="n">T</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_dF_prec_posterior</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_dF_cov_posterior</span><span class="p">)</span>
 
-            <span class="nd">@partial</span><span class="p">(</span><span class="n">jit</span><span class="p">,</span> <span class="n">static_argnames</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;mean&quot;</span><span class="p">,</span> <span class="s2">&quot;kernel&quot;</span><span class="p">])</span>
-            <span class="k">def</span><span class="w"> </span><span class="nf">step</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">raw_params</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">,</span> <span class="n">mean</span><span class="p">,</span> <span class="n">kernel</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
-                <span class="n">loss</span><span class="p">,</span> <span class="n">grads</span> <span class="o">=</span> <span class="n">_compute_elbo_loss</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">raw_params</span><span class="p">,</span> <span class="n">mean</span><span class="p">,</span> <span class="n">kernel</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
-                <span class="n">update</span><span class="p">,</span> <span class="n">opt_state</span> <span class="o">=</span> <span class="n">optimizer</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">grads</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">)</span>
-                <span class="n">raw_params</span> <span class="o">=</span> <span class="n">optax</span><span class="o">.</span><span class="n">apply_updates</span><span class="p">(</span><span class="n">raw_params</span><span class="p">,</span> <span class="n">update</span><span class="p">)</span>
-                <span class="k">return</span> <span class="n">loss</span><span class="p">,</span> <span class="n">raw_params</span><span class="p">,</span> <span class="n">opt_state</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_F_samples_posterior</span> <span class="o">=</span> <span class="n">_dF_to_F</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_dF_samples_posterior</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_conf</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_F_mean_posterior</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_F_samples_posterior</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_F_cov_posterior</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">cov</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_F_samples_posterior</span><span class="o">.</span><span class="n">T</span><span class="p">))</span>
 
-            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">optimize_steps</span><span class="p">):</span>
-                <span class="n">loss</span><span class="p">,</span> <span class="n">raw_params</span><span class="p">,</span> <span class="n">opt_state</span> <span class="o">=</span> <span class="n">step</span><span class="p">(</span>
-                    <span class="n">subkey</span><span class="p">,</span> <span class="n">raw_params</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">mean</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">kernel</span><span class="p">,</span> <span class="n">_data</span>
-                <span class="p">)</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_rng_key</span><span class="p">,</span> <span class="n">subkey</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rng_key</span><span class="p">)</span>
-                <span class="k">if</span> <span class="n">i</span> <span class="o">%</span> <span class="mi">100</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-                    <span class="n">params</span> <span class="o">=</span> <span class="n">_params_from_raw</span><span class="p">(</span><span class="n">raw_params</span><span class="p">)</span>
-                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;step: </span><span class="si">{</span><span class="n">i</span><span class="si">:</span><span class="s2">&gt;10d</span><span class="si">}</span><span class="s2">, loss: </span><span class="si">{</span><span class="n">loss</span><span class="si">:</span><span class="s2">10.4f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">_print_params</span><span class="p">(</span><span class="n">params</span><span class="p">))</span>
-
-            <span class="bp">self</span><span class="o">.</span><span class="n">_params</span> <span class="o">=</span> <span class="n">_params_from_raw</span><span class="p">(</span><span class="n">raw_params</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_dF_mean_prior</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_params</span><span class="p">[</span><span class="s2">&quot;mean&quot;</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">_state_cv</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_dF_cov_prior</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">kernel</span><span class="p">(</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_params</span><span class="p">[</span><span class="s2">&quot;kernel&quot;</span><span class="p">],</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_state_cv</span><span class="p">,</span>
-            <span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_dF_prec_prior</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_dF_cov_prior</span><span class="p">)</span>
-
-            <span class="c1">## solve for the mode of the posterior</span>
-            <span class="n">f</span> <span class="o">=</span> <span class="n">jit</span><span class="p">(</span><span class="n">value_and_grad</span><span class="p">(</span><span class="n">_compute_loss_joint_likelihood_of_dF</span><span class="p">))</span>
-            <span class="n">hess</span> <span class="o">=</span> <span class="n">jit</span><span class="p">(</span><span class="n">hessian</span><span class="p">(</span><span class="n">_compute_loss_joint_likelihood_of_dF</span><span class="p">))</span>
-            <span class="n">res</span> <span class="o">=</span> <span class="n">fmin_newton</span><span class="p">(</span>
-                <span class="n">f</span><span class="p">,</span>
-                <span class="n">hess</span><span class="p">,</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_dF_mode_ll</span><span class="p">,</span>
-                <span class="n">args</span><span class="o">=</span><span class="p">(</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">_energy</span><span class="p">,</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">_num_conf</span><span class="p">,</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">_dF_mean_prior</span><span class="p">,</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">_dF_prec_prior</span><span class="p">,</span>
-                <span class="p">),</span>
-            <span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_dF_mode_posterior</span> <span class="o">=</span> <span class="n">res</span><span class="p">[</span><span class="s2">&quot;x&quot;</span><span class="p">]</span>
-
-            <span class="c1">## sample dF from the posterior</span>
-            <span class="k">def</span><span class="w"> </span><span class="nf">logdensity</span><span class="p">(</span><span class="n">dF</span><span class="p">):</span>
-                <span class="k">return</span> <span class="n">_compute_log_joint_likelihood_of_dF</span><span class="p">(</span>
-                    <span class="n">dF</span><span class="p">,</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">_energy</span><span class="p">,</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">_num_conf</span><span class="p">,</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">_dF_mean_prior</span><span class="p">,</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">_dF_prec_prior</span><span class="p">,</span>
-                <span class="p">)</span>
-
-            <span class="bp">self</span><span class="o">.</span><span class="n">_rng_key</span><span class="p">,</span> <span class="n">subkey</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rng_key</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_dF_samples_posterior</span> <span class="o">=</span> <span class="n">_sample_from_logdensity</span><span class="p">(</span>
-                <span class="n">subkey</span><span class="p">,</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_dF_mode_posterior</span><span class="p">,</span>
-                <span class="n">logdensity</span><span class="p">,</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_warmup_steps</span><span class="p">,</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_sample_size</span><span class="p">,</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_verbose</span><span class="p">,</span>
-            <span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_dF_mean_posterior</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_dF_samples_posterior</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_dF_cov_posterior</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">cov</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_dF_samples_posterior</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_dF_prec_posterior</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_dF_cov_posterior</span><span class="p">)</span>
-
-            <span class="bp">self</span><span class="o">.</span><span class="n">_F_mode_posterior</span> <span class="o">=</span> <span class="n">_dF_to_F</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_dF_mode_posterior</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_conf</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_F_samples_posterior</span> <span class="o">=</span> <span class="n">_dF_to_F</span><span class="p">(</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_dF_samples_posterior</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_conf</span>
-            <span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_F_mean_posterior</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_F_samples_posterior</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_F_cov_posterior</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">cov</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_F_samples_posterior</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_posterior_samples_computed</span> <span class="o">=</span> <span class="kc">True</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">F_mode</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NDArray</span><span class="p">:</span>
 <span class="w">        </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;The posterior mode estimate of the free energies of the states under the constraints that :math:`\sum_{k=1}^{M} N_k * F_k = 0`, where :math:`N_k` and :math:`F_k` are the number of conformations and the free energy of the k-th state, respectively.&quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prior</span> <span class="o">==</span> <span class="s2">&quot;uniform&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_mode_ll_computed</span><span class="p">()</span>
             <span class="n">F_mode</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_F_mode_ll</span>
         <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prior</span> <span class="o">==</span> <span class="s2">&quot;normal&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_posterior_mode_computed</span><span class="p">()</span>
             <span class="n">F_mode</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_F_mode_posterior</span>
         <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">device_put</span><span class="p">(</span><span class="n">F_mode</span><span class="p">,</span> <span class="n">jax</span><span class="o">.</span><span class="n">devices</span><span class="p">(</span><span class="s2">&quot;cpu&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]))</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">F_mean</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NDArray</span><span class="p">:</span>
 <span class="w">        </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;The posterior mean of the free energies of the states under the constraints that :math:`\\sum_{k=1}^{M} N_k * F_k = 0`, where :math:`N_k` and :math:`F_k` are the number of conformations and the free energy of the k-th state, respectively.&quot;&quot;&quot;</span>
-
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prior</span> <span class="o">==</span> <span class="s2">&quot;uniform&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_samples_ll_computed</span><span class="p">()</span>
             <span class="n">F_mean</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_F_mean_ll</span>
         <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prior</span> <span class="o">==</span> <span class="s2">&quot;normal&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_posterior_samples_computed</span><span class="p">()</span>
             <span class="n">F_mean</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_F_mean_posterior</span>
         <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">device_put</span><span class="p">(</span><span class="n">F_mean</span><span class="p">,</span> <span class="n">jax</span><span class="o">.</span><span class="n">devices</span><span class="p">(</span><span class="s2">&quot;cpu&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]))</span>
 
@@ -565,8 +599,10 @@ document.write(`
     <span class="k">def</span><span class="w"> </span><span class="nf">F_cov</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NDArray</span><span class="p">:</span>
 <span class="w">        </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;The posterior covariance matrix of the free energies of the states under the constraints that :math:`\\sum_{k=1}^{M} N_k * F_k = 0`, where :math:`N_k` and :math:`F_k` are the number of conformations and the free energy of the k-th state, respectively.&quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prior</span> <span class="o">==</span> <span class="s2">&quot;uniform&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_samples_ll_computed</span><span class="p">()</span>
             <span class="n">F_cov</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_F_cov_ll</span>
         <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prior</span> <span class="o">==</span> <span class="s2">&quot;normal&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_posterior_samples_computed</span><span class="p">()</span>
             <span class="n">F_cov</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_F_cov_posterior</span>
         <span class="n">F_cov</span> <span class="o">=</span> <span class="n">F_cov</span> <span class="o">-</span> <span class="n">jnp</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_conf</span><span class="p">)</span> <span class="o">+</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_conf</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
 
@@ -584,8 +620,10 @@ document.write(`
     <span class="k">def</span><span class="w"> </span><span class="nf">F_samples</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NDArray</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;The samples of the free energies of the states from the posterior distribution under the constraints that :math:`\\sum_{k=1}^{M} N_k * F_k = 0`, where :math:`N_k` and :math:`F_k` are the number of conformations and the free energy of the k-th state, respectively.&quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prior</span> <span class="o">==</span> <span class="s2">&quot;uniform&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_samples_ll_computed</span><span class="p">()</span>
             <span class="n">F_samples</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_F_samples_ll</span>
         <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prior</span> <span class="o">==</span> <span class="s2">&quot;normal&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_posterior_samples_computed</span><span class="p">()</span>
             <span class="n">F_samples</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_F_samples_posterior</span>
         <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">device_put</span><span class="p">(</span><span class="n">F_samples</span><span class="p">,</span> <span class="n">jax</span><span class="o">.</span><span class="n">devices</span><span class="p">(</span><span class="s2">&quot;cpu&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]))</span>
 
